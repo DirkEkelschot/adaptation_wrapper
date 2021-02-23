@@ -33,9 +33,9 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(comm, &world_rank);
     int i,j;
     
-    const char* fn_grid="../test_mesh/grid.h5";
-    const char* fn_conn="../test_mesh/conn.h5";
-    const char* fn_data="../test_mesh/data.h5";
+    const char* fn_grid="../test_mesh/cylinder_hex/grid.h5";
+    const char* fn_conn="../test_mesh/cylinder_hex/conn.h5";
+    const char* fn_data="../test_mesh/cylinder_hex/data.h5";
     
     US3D* us3d = ReadUS3DData(fn_conn,fn_grid,fn_data,comm,info);
 
@@ -51,14 +51,14 @@ int main(int argc, char** argv) {
     
     ParallelState* ien_pstate               = new ParallelState(us3d->ien->getNglob(),comm);
     ParallelState* ife_pstate               = new ParallelState(us3d->ifn->getNglob(),comm);
-    ParallelState_Parmetis* parmetis_pstate = new ParallelState_Parmetis(us3d->ien,comm,8);
+    ParallelState_Parmetis* parmetis_pstate = new ParallelState_Parmetis(us3d->ien,us3d->elTypes,us3d->ie_Nv,comm);
     ParallelState* xcn_pstate               = new ParallelState(us3d->xcn->getNglob(),comm);
     
     clock_t t;
     double tn = 0.0;
     t = clock();
-    Partition* P = new Partition(us3d->ien, us3d->iee, us3d->ief,
-                                 us3d->ifn, us3d->ife, us3d->if_ref,
+    Partition* P = new Partition(us3d->ien, us3d->iee, us3d->ief, us3d->ie_Nv , us3d->ie_Nf,
+                                 us3d->ifn, us3d->ife, us3d->if_ref, us3d->if_Nv,
                                  parmetis_pstate, ien_pstate, ife_pstate,
                                  us3d->xcn, xcn_pstate, Ui, comm);
     
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
         std::cout << "Started creating mesh topology object... " << std::endl;
     }
 
-    Mesh_Topology* meshTopo = new Mesh_Topology(P,comm);
+    //Mesh_Topology* meshTopo = new Mesh_Topology(P,comm);
     
     if(world_rank == 0)
     {
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     }
     
     t = clock();
-    std::map<int,Array<double>* > dUdXi = ComputedUdx_LSQ_US3D(P,Uadj,meshTopo,gB,comm);
+    std::map<int,Array<double>* > dUdXi = ComputedUdx_LSQ_US3D(P,Uadj,gB,comm);
     double Gtiming = ( std::clock() - t) / (double) CLOCKS_PER_SEC;
     double Gmax_time = 0.0;
     MPI_Allreduce(&Gtiming, &Gmax_time, 1, MPI_DOUBLE, MPI_MAX, comm);
@@ -129,6 +129,7 @@ int main(int argc, char** argv) {
     Array<double>* dUidxi = new Array<double>(dUdXi.size(),1);
     Array<double>* dUidyi = new Array<double>(dUdXi.size(),1);
     Array<double>* dUidzi = new Array<double>(dUdXi.size(),1);
+    
     std::map<int,Array<double>* >::iterator grit;
 
     for(grit=dUdXi.begin();grit!=dUdXi.end();grit++)
@@ -143,7 +144,6 @@ int main(int argc, char** argv) {
     int nlElem = us3d->ien->getNrow();
     int nElem  = us3d->ien->getNglob();
     int nvg    = us3d->xcn->getNglob();
-
     
     std::vector<double> GuX_loc;
     std::vector<int> vids;
@@ -152,7 +152,6 @@ int main(int argc, char** argv) {
     int gid,lid;
     int nval = 6;
     std::set<int> vdone;
-    
 //
     Array<int>*  lE2gE_g;
     Array<double>*  GuX_g;
@@ -214,6 +213,7 @@ int main(int argc, char** argv) {
                 G_offsets,
                 MPI_INT, 0, comm);
     
+    
     MPI_Gatherv(&dUidxi->data[0],
                 dUidxi->getNrow(),
                 MPI_DOUBLE,
@@ -257,7 +257,6 @@ int main(int argc, char** argv) {
             std::cout << " --::-- Parallel gradient reconstruction test has PASSED. --::-- " << std::endl;
         }
     }
-    
     
     MPI_Finalize();
     
